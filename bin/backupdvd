@@ -1,0 +1,35 @@
+#!/bin/bash
+#This script is call by udev on cd detection to run the CDRip script under the X session of the main user
+
+#define variables
+LOG="/var/log/backupmedia.log"
+VOLNAME=$(volname | tr -dc â€˜[:alnum:]â€˜)
+VIDEODIR="/mnt/data1/videos/"
+VIDEOFILENAME="$VIDEODIR$VOLNAME.m4v"
+MAIL="ralph@riede-net.de,petra@riede-net.de"
+#MAIL="ralph@riede-net.de"
+XBMC="http://home-theater:8080/jsonrpc"
+DVD_DIR="/media/cdrom" # Mount location of dvd
+DVD_DEV="/dev/sr0" # DVD Device
+ 
+mount ${DVD_DEV} ${DVD_DIR}
+ 
+sleep 10;
+
+export LANG=de_DE.UTF-8
+
+echo "DVD detected $(volname)" 
+if test -e "$VIDEOFILENAME"
+then
+	echo "$VIDEOFILENAME already exists"
+	echo "${date} $VOLNAME Import abgebrochen" | mail -s "DVD $VOLNAME existiert bereits" $MAIL 
+else
+        echo "${date}" | mail -s "DVD-Import $VOLNAME gestartet" $MAIL
+	HandBrakeCLI -i ${DVD_DIR}/VIDEO_TS -o $VIDEOFILENAME -a 1,2,3,4,5,6,7,8,9 -m -E copy --audio-copy-mask ac3,dts,dtshd --audio-fallback ffac3 -e x264 -q 20 -x level=4.1:ref=4:b-adapt=2:direct=auto:me=umh:subq=8:rc-lookahead=50:psy-rd=1.0,0.15:deblock=-1,-1:vbv-bufsize=30000:vbv-maxrate=40000:slices=4 &>> $LOG
+	chown hts $VIDEOFILENAME
+	echo "${date}" | mail -s "DVD $VOLNAME erfolgreich importiert" $MAIL
+	curl --data-binary '{ "jsonrpc": "2.0", "method": "VideoLibrary.Scan", "id": "mybash"}' -H 'content-type: application/json;' $XBMC
+fi
+umount "${DVD_DIR}" && eject "${DVD_DEV}" 
+exit 0
+

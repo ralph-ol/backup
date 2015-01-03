@@ -1,0 +1,52 @@
+#!/bin/bash
+#This script is call by udev on cd detection to run the CDRip script under the X session of the main user
+
+#define variables
+LOG="/var/log/backupmedia.log"
+MUSICDIR="/mnt/data2/mp3/Musik"
+MAIL="ralph@riede-net.de,petra@riede-net.de"
+#MAIL="ralph@riede-net.de"
+COVERLOVIN="/usr/local/bin/coverlovin/coverlovin.py"
+XBMC="http://home-theater:8080/jsonrpc"
+ABCDE="/usr/local/bin/abcde"
+CDDBCONF="/etc/abcde.conf.cddb"
+
+#set encoding for coverlovin
+export LANG=de_DE.UTF-8
+
+DISCID=$(abcde-musicbrainz-tool --command id --device "/dev/sr0" | cut -d \  -f 1)
+
+#clean up
+rm -rf /tmp/cddbread.1
+#create cddbrerad.1 file with cd meta data
+$(abcde-musicbrainz-tool --command data --discid "$DISCID" --workdir /tmp)
+
+if [ ! -f "/tmp/cddbread.1" ]
+then
+	echo "$date Kein Eintrag bei MusicBrainz gefunden!" | mail -s "CD-Import kann nicht gestartet werden" $MAIL
+	#eject	
+	exit 0
+fi
+
+TITLE=$(less /tmp/cddbread.1 | grep DTITLE |  cut -d \= -f 2)
+ALBUM=$(echo $TITLE | cut -d \/ -f 2 | sed 's/^ //')
+ARTIST=$(echo $TITLE | cut -d \/ -f 1 | sed 's/^ //')
+
+if [ -d "$MUSICDIR/$ARTIST/$ALBUM" ]
+then 
+	echo "$date" | mail -s "CD $TITLE wurde bereits importiert" $MAIL 
+	#eject	
+	exit 0
+fi
+
+echo "$date" | mail -s "CD-Import $TITLE gestartet" $MAIL 
+${ABCDE} 
+${COVERLOVIN} "$MUSICDIR/" " -s large -c 2" 
+chown -R "mythtv" "$MUSICDIR/" 
+chgrp -R "mythtv" "$MUSICDIR/" 
+echo "$date" | mail -s "CD ${TITLE} erfolgreich importiert" $MAIL
+curl --data-binary '{ "jsonrpc": "2.0", "method": "AudioLibrary.Scan", "id": "mybash"}' -H 'content-type: application/json;' $XBMC
+
+#eject
+exit 0
+
